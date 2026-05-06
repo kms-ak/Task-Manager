@@ -129,6 +129,16 @@
             transform: scale(1.02);
         }
 
+        .edit-input {
+            background: rgba(0, 243, 255, 0.1);
+            border: 1px solid var(--neon-cyan);
+            color: var(--neon-cyan);
+            outline: none;
+            width: 100%;
+            padding: 2px 4px;
+            font-family: 'JetBrains Mono', monospace;
+        }
+
         /* Empty state dash animation */
         .scan-line {
             width: 100%;
@@ -259,6 +269,7 @@
     <script>
         let tasks = JSON.parse(localStorage.getItem('retrofuturistic-tasks')) || [];
         let lastVisitDate = localStorage.getItem('retro-last-visit') || new Date().toDateString();
+        let editingId = null;
         const startTime = Date.now();
 
         const form = document.getElementById('todo-form');
@@ -301,13 +312,11 @@
             const todayISO = now.toISOString().split('T')[0];
             
             tasks = tasks.map(task => {
-                // PROMOTE logic: Upcoming -> Daily
                 if (task.type === 'scheduled' && task.dueDate <= todayISO) {
                     return { ...task, type: 'daily' };
                 }
                 return task;
             }).filter(task => {
-                // Auto-cleanup completed daily tasks from previous sessions
                 if (task.type === 'daily' && task.completed) return false;
                 return true;
             });
@@ -339,7 +348,7 @@
             if (text) {
                 tasks.unshift({
                     id: Date.now(),
-                    text: text.toUpperCase(), // Hardcore retro look
+                    text: text.toUpperCase(),
                     completed: false,
                     type: effectiveType,
                     dueDate: (effectiveType === 'scheduled' || type === 'scheduled') ? dueDate : null
@@ -359,6 +368,31 @@
         function deleteTask(id) {
             tasks = tasks.filter(task => task.id !== id);
             saveTasks();
+        }
+
+        function startEditing(id) {
+            editingId = id;
+            renderTasks();
+            setTimeout(() => {
+                const input = document.getElementById(`edit-${id}`);
+                if (input) {
+                    input.focus();
+                    input.setSelectionRange(input.value.length, input.value.length);
+                }
+            }, 0);
+        }
+
+        function finishEditing(id, newText) {
+            if (newText.trim()) {
+                tasks = tasks.map(t => t.id === id ? { ...t, text: newText.toUpperCase() } : t);
+            }
+            editingId = null;
+            saveTasks();
+        }
+
+        function cancelEditing() {
+            editingId = null;
+            renderTasks();
         }
 
         function clearCompleted() {
@@ -392,8 +426,9 @@
             } else {
                 emptyEl.classList.add('hidden');
                 taskList.forEach((task) => {
+                    const isEditing = editingId === task.id;
                     const li = document.createElement('li');
-                    li.className = 'task-item flex flex-col gap-1 p-3 mono relative group';
+                    li.className = 'task-item flex flex-col gap-1 p-3 mono relative group cursor-pointer';
                     li.setAttribute('data-id', task.id);
                     
                     let dateTag = "";
@@ -403,17 +438,26 @@
                         dateTag = `<span class="text-[8px] text-cyan-400/60">[ T-${label} ]</span>`;
                     }
 
+                    const content = isEditing ? 
+                        `<div class="flex flex-col gap-1">
+                            <span class="text-[7px] glow-cyan">EDIT_MODE</span>
+                            <input type="text" id="edit-${task.id}" class="edit-input text-[11px]" value="${task.text}" 
+                                onblur="finishEditing(${task.id}, this.value)" 
+                                onkeydown="if(event.key==='Enter') finishEditing(${task.id}, this.value); if(event.key==='Escape') cancelEditing()">
+                        </div>` :
+                        `<div class="flex-1" onclick="startEditing(${task.id})">
+                            ${dateTag}
+                            <p class="text-[11px] leading-tight transition-all ${task.completed ? 'completed-text' : ''}">
+                                ${task.text}
+                            </p>
+                        </div>`;
+
                     li.innerHTML = `
                         <div class="flex items-start gap-4">
                             <input type="checkbox" class="custom-checkbox mt-0.5" ${task.completed ? 'checked' : ''} 
-                                onclick="toggleTask(${task.id})">
-                            <div class="flex-1">
-                                ${dateTag}
-                                <p class="text-[11px] leading-tight transition-all ${task.completed ? 'completed-text' : ''}">
-                                    ${task.text}
-                                </p>
-                            </div>
-                            <button onclick="deleteTask(${task.id})" class="opacity-0 group-hover:opacity-100 text-red-500/40 hover:text-red-500 transition-all">
+                                onclick="event.stopPropagation(); toggleTask(${task.id})">
+                            ${content}
+                            <button onclick="event.stopPropagation(); deleteTask(${task.id})" class="opacity-0 group-hover:opacity-100 text-red-500/40 hover:text-red-500 transition-all">
                                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M18 6L6 18M6 6l12 12"/></svg>
                             </button>
                         </div>
