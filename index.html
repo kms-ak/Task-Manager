@@ -153,6 +153,14 @@
             from { top: 0; }
             to { top: 100%; }
         }
+
+        .sync-pulse {
+            animation: sync-active 0.5s ease-in-out;
+        }
+        @keyframes sync-active {
+            0% { color: white; text-shadow: 0 0 20px white; }
+            100% { color: var(--neon-cyan); }
+        }
     </style>
 </head>
 <body class="p-6 md:p-12">
@@ -268,7 +276,7 @@
 
     <script>
         let tasks = JSON.parse(localStorage.getItem('retrofuturistic-tasks')) || [];
-        let lastVisitDate = localStorage.getItem('retro-last-visit') || new Date().toDateString();
+        let lastVisitDate = localStorage.getItem('retro-last-visit') || "";
         let editingId = null;
         const startTime = Date.now();
 
@@ -295,6 +303,7 @@
             const dateString = now.toDateString();
             dateDisplay.innerText = now.toLocaleDateString('en-US', { weekday: 'short', year: 'numeric', month: 'long', day: 'numeric' }).toUpperCase();
 
+            // Check if date has actually changed OR if it's the first time running
             if (lastVisitDate !== dateString) {
                 handleNewDay(dateString);
             }
@@ -311,21 +320,36 @@
             now.setHours(0,0,0,0);
             const todayISO = now.toISOString().split('T')[0];
             
+            let updateMade = false;
+
             tasks = tasks.map(task => {
+                // PROMOTE: If it's a scheduled task and the date is TODAY or EARLIER
                 if (task.type === 'scheduled' && task.dueDate <= todayISO) {
+                    updateMade = true;
                     return { ...task, type: 'daily' };
                 }
                 return task;
             }).filter(task => {
-                if (task.type === 'daily' && task.completed) return false;
+                // Auto-cleanup completed daily tasks from previous sessions
+                // Only if the date has truly rolled over
+                if (lastVisitDate !== "" && lastVisitDate !== currentDateStr) {
+                    if (task.type === 'daily' && task.completed) return false;
+                }
                 return true;
             });
 
             lastVisitDate = currentDateStr;
             localStorage.setItem('retro-last-visit', lastVisitDate);
+            
+            if (updateMade) {
+                syncStatus.classList.add('sync-pulse');
+                setTimeout(() => syncStatus.classList.remove('sync-pulse'), 1000);
+            }
+            
             saveTasks();
         }
 
+        // Initialize display and start loop
         updateDisplayDate();
         setInterval(updateDisplayDate, 1000);
 
@@ -340,9 +364,14 @@
             const text = input.value.trim();
             const type = typeSelect.value;
             const dueDate = dateInput.value;
-            const todayISO = new Date().toISOString().split('T')[0];
+            
+            // Get current local date in ISO format safely
+            const local = new Date();
+            local.setHours(0,0,0,0);
+            const todayISO = local.toISOString().split('T')[0];
 
             let effectiveType = type;
+            // If user specifically picked today's date in "Scheduled", move to daily immediately
             if (type === 'scheduled' && dueDate === todayISO) effectiveType = 'daily';
 
             if (text) {
@@ -467,6 +496,7 @@
             }
         }
 
+        // Final initialization
         renderTasks();
     </script>
 </body>
